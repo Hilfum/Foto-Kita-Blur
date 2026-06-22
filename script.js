@@ -3,12 +3,17 @@
   const canvas = document.getElementById('output');
   const ctx = canvas.getContext('2d');
   const stage = document.getElementById('stage');
+  const cameraPlaceholder = document.getElementById('camera-placeholder');
+  
   const statusBadge = document.getElementById('status-badge');
   const statusLabel = document.getElementById('status-label');
   const statusText = document.getElementById('status-text');
+  
   const btnStart = document.getElementById('btn-start');
+  const btnStop = document.getElementById('btn-stop');
   const btnSnapshot = document.getElementById('btn-snapshot');
   const btnSwitch = document.getElementById('btn-switch');
+  
   const blurSlider = document.getElementById('blur-amount');
   const blurVal = document.getElementById('blur-amount-val');
   const fadeSlider = document.getElementById('fade-speed');
@@ -23,6 +28,9 @@
   let fadeStep = 0.04;
   let currentBlur = 0;
   let peaceDetected = false;
+
+  let processFrameId = null;
+  let renderLoopId = null;
 
   blurSlider.addEventListener('input', () => {
     blurAmount = parseInt(blurSlider.value, 10);
@@ -59,7 +67,7 @@
   }
 
   function setBadge(state, label) {
-    statusBadge.classList.remove('loading', 'blurred');
+    statusBadge.classList.remove('loading', 'blurred', 'online', 'offline');
     if (state) statusBadge.classList.add(state);
     statusLabel.textContent = label;
   }
@@ -124,24 +132,31 @@
         setBadge('blurred', 'Foto kita blur ✌️');
         statusText.textContent = 'Memori tersimpan, gambarnya memudar...';
       } else {
-        setBadge(null, 'Live');
+        setBadge('online', 'Live');
         statusText.textContent = '';
       }
     }
 
-    requestAnimationFrame(renderLoop);
+    renderLoopId = requestAnimationFrame(renderLoop);
   }
 
   async function processFrame() {
     if (!running) return;
     if (hands && video.readyState >= 2) {
-      await hands.send({ image: video });
+      try {
+        await hands.send({ image: video });
+      } catch (e) {
+        console.error("Hands detection error:", e);
+      }
     }
-    requestAnimationFrame(processFrame);
+    processFrameId = requestAnimationFrame(processFrame);
   }
 
   async function startCamera() {
     try {
+      setBadge('loading', 'Menghubungkan...');
+      statusText.textContent = '';
+      
       if (stream) {
         stream.getTracks().forEach((t) => t.stop());
       }
@@ -151,25 +166,84 @@
       });
       video.srcObject = stream;
       await video.play();
+      
+      if (cameraPlaceholder) cameraPlaceholder.classList.add('hidden');
+      video.classList.add('active');
+      
       resizeCanvas();
 
       if (!hands) {
+        setBadge('loading', 'Memuat model...');
         await initHands();
       }
 
       running = true;
-      setBadge(null, 'Live');
+      setBadge('online', 'Live');
+      
+      // Toggle button visibility & state
+      btnStart.classList.add('hidden');
+      btnStop.classList.remove('hidden');
+      btnSnapshot.disabled = false;
+      btnSwitch.disabled = false;
+
+      // Start loops
       processFrame();
       renderLoop();
     } catch (err) {
-      setBadge('loading', 'Akses kamera ditolak');
+      setBadge('loading', 'Kamera Gagal');
       statusText.textContent = 'Periksa izin kamera di browser Anda.';
       console.error(err);
+      stopCamera();
     }
+  }
+
+  function stopCamera() {
+    running = false;
+    peaceDetected = false;
+    currentBlur = 0;
+
+    if (processFrameId) {
+      cancelAnimationFrame(processFrameId);
+      processFrameId = null;
+    }
+    if (renderLoopId) {
+      cancelAnimationFrame(renderLoopId);
+      renderLoopId = null;
+    }
+
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      stream = null;
+    }
+    
+    video.srcObject = null;
+    video.classList.remove('active');
+    
+    if (cameraPlaceholder) cameraPlaceholder.classList.remove('hidden');
+    
+    // Clear canvas content
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Reset button visibility & state
+    btnStart.classList.remove('hidden');
+    btnStop.classList.add('hidden');
+    btnSnapshot.disabled = true;
+    btnSwitch.disabled = true;
+    
+    setBadge('offline', 'Kamera Mati');
+    statusText.textContent = '';
+    
+    // Reset stage dimensions to default 3/4 aspect ratio
+    stage.style.aspectRatio = '';
+    stage.style.maxWidth = '';
   }
 
   btnStart.addEventListener('click', () => {
     startCamera();
+  });
+
+  btnStop.addEventListener('click', () => {
+    stopCamera();
   });
 
   btnSwitch.addEventListener('click', () => {
