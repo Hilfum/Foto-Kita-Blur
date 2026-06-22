@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Love House';
+  src: url('fonts/Love House.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #0b0b0f;
   --card-bg: rgba(20, 20, 27, 0.65);
@@ -12,7 +20,7 @@
   --warning: #f59e0b;
   --danger: #ef4444;
   --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -29,12 +37,11 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 40px 20px;
+  padding: 20px;
   position: relative;
   overflow-x: hidden;
 }
 
-/* Ambient Background Blobs */
 .bg-blobs {
   position: fixed;
   top: 0;
@@ -95,34 +102,31 @@ body {
   }
 }
 
-/* App Container Card */
 .app-card {
   width: 100%;
-  max-width: 520px;
+  max-width: 500px;
   background: var(--card-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--card-border);
-  border-radius: 28px;
+  border-radius: 24px;
   padding: 24px;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 
               0 0 40px rgba(var(--accent-rgb), 0.05);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
   position: relative;
   z-index: 1;
   transition: max-width 0.4s ease, padding 0.4s ease;
 }
 
-/* Header */
 header {
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  margin-bottom: 4px;
 }
 
 .header-logo-row {
@@ -131,6 +135,7 @@ header {
   justify-content: center;
   gap: 10px;
   margin-bottom: 2px;
+  width: 100%;
 }
 
 .logo-badge-small {
@@ -153,12 +158,26 @@ header {
 }
 
 h1 {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #ffffff 30%, #ffd4e2 100%);
+  font-family: 'Love House', cursive;
+  font-size: 34px;
+  letter-spacing: 0.5px;
+  background: linear-gradient(135deg, #ff4a80 0%, #ff7e40 50%, #facc15 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  filter: drop-shadow(0 0 10px rgba(255, 74, 128, 0.4)) 
+          drop-shadow(0 0 20px rgba(249, 115, 22, 0.25))
+          drop-shadow(0 0 35px rgba(250, 204, 21, 0.15));
+  transition: var(--transition);
+}
+
+.app-card:hover h1 {
+  filter: drop-shadow(0 0 14px rgba(255, 74, 128, 0.6)) 
+          drop-shadow(0 0 26px rgba(249, 115, 22, 0.4))
+          drop-shadow(0 0 40px rgba(250, 204, 21, 0.25));
 }
 
 .subtitle {
@@ -172,11 +191,10 @@ h1 {
   color: #fff;
 }
 
-/* Camera Bezel and Container */
 .stage-container {
   background: #111116;
-  border-radius: 22px;
-  padding: 6px;
+  border-radius: 20px;
+  padding: 4px;
   box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.1),
               0 10px 25px rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -185,15 +203,20 @@ h1 {
 .stage {
   position: relative;
   width: 100%;
-  aspect-ratio: 3/4;
+  aspect-ratio: 21/9;
+  max-height: 110px;
   background: #060608;
   border-radius: 16px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: max-width 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
-              aspect-ratio 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: var(--transition);
+}
+
+.stage.active-camera {
+  aspect-ratio: 3/4;
+  max-height: 50vh;
 }
 
 video,
@@ -223,7 +246,6 @@ video.active {
   pointer-events: none;
 }
 
-/* Camera Offline Placeholder */
 .camera-placeholder {
   position: absolute;
   top: 0;
@@ -231,11 +253,11 @@ video.active {
   width: 100%;
   height: 100%;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  flex-direction: row;
   align-items: center;
-  padding: 24px;
-  text-align: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 20px;
   z-index: 3;
   background: radial-gradient(circle at center, #15151e 0%, #08080c 100%);
   transition: opacity 0.4s ease;
@@ -248,17 +270,17 @@ video.active {
 
 .placeholder-icon-wrapper {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .placeholder-icon {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   color: var(--text-muted);
   position: relative;
   z-index: 2;
@@ -279,102 +301,24 @@ video.active {
   100% { transform: scale(1.5); opacity: 0; }
 }
 
+.placeholder-text-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+}
+
 .placeholder-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .placeholder-desc {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--text-muted);
-  max-width: 85%;
   line-height: 1.4;
-}
-
-/* HUD and HUD Badge */
-.hud {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  z-index: 4;
-  pointer-events: none;
-}
-
-.badge {
-  background: rgba(10, 10, 15, 0.65);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50px;
-  padding: 5px 12px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  transition: var(--transition);
-}
-
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  position: relative;
-}
-
-/* Badge States */
-.badge.online {
-  border-color: rgba(16, 185, 129, 0.3);
-  color: #fff;
-}
-.badge.online .dot {
-  background: var(--success);
-  box-shadow: 0 0 8px var(--success);
-  animation: breathe 1.5s infinite ease-in-out;
-}
-
-.badge.blurred {
-  border-color: rgba(var(--accent-rgb), 0.4);
-  color: #fff;
-  background: rgba(var(--accent-rgb), 0.15);
-}
-.badge.blurred .dot {
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--accent);
-  animation: breathe 0.8s infinite ease-in-out;
-}
-
-.badge.loading {
-  border-color: rgba(245, 158, 11, 0.3);
-  color: #fff;
-}
-.badge.loading .dot {
-  background: var(--warning);
-  box-shadow: 0 0 8px var(--warning);
-  animation: breathe 1s infinite ease-in-out;
-}
-
-.badge.offline {
-  border-color: rgba(255, 255, 255, 0.05);
-  color: var(--text-muted);
-}
-.badge.offline .dot {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-@keyframes breathe {
-  0%, 100% { opacity: 0.5; transform: scale(0.9); }
-  50% { opacity: 1; transform: scale(1.15); }
 }
 
 #status-text {
@@ -407,14 +351,13 @@ video.active {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Controls Button Dashboard */
 .controls {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: auto 1fr auto;
   gap: 10px;
   width: 100%;
   max-width: 480px;
-  margin: 4px auto 0;
+  margin: 0 auto;
 }
 
 .btn {
@@ -439,7 +382,6 @@ video.active {
 }
 
 .btn-primary {
-  grid-column: span 2;
   background: linear-gradient(135deg, var(--accent) 0%, #db2777 100%);
   color: #fff;
   border: none;
@@ -453,7 +395,6 @@ video.active {
 }
 
 .btn-danger {
-  grid-column: span 2;
   background: linear-gradient(135deg, var(--danger) 0%, #c084fc 150%);
   color: #fff;
   border: none;
@@ -487,7 +428,10 @@ video.active {
   display: none !important;
 }
 
-/* Tip Footer Style */
+.btn-text {
+  display: none;
+}
+
 .tip-footer {
   display: flex;
   align-items: center;
@@ -496,8 +440,8 @@ video.active {
   font-size: 11px;
   color: var(--text-muted);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding-top: 16px;
-  margin-top: 8px;
+  padding-top: 12px;
+  margin-top: 4px;
   line-height: 1.4;
   width: 100%;
 }
@@ -507,19 +451,44 @@ video.active {
   flex-shrink: 0;
 }
 
-/* Desktop/Laptop UI Enhancements (Single Column Centered Layout) */
+@media (min-width: 600px) {
+  .btn-text {
+    display: inline;
+  }
+}
+
 @media (min-width: 768px) {
   .app-card {
-    max-width: 900px; /* Centered compact layout */
-    padding: 32px;
-    gap: 24px;
+    max-width: 900px;
+    padding: 30px;
+    gap: 20px;
   }
 
   .stage {
-    aspect-ratio: 16/9; /* Massive landscape format placeholder */
+    aspect-ratio: 21/5;
+    max-height: 130px;
+  }
+
+  .stage.active-camera {
+    aspect-ratio: 16/9;
+    max-height: 55vh;
   }
 
   .controls {
-    max-width: 520px;
+    max-width: 640px;
+  }
+
+  header {
+    text-align: center;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .header-logo-row {
+    justify-content: center;
+  }
+
+  h1 {
+    font-size: 40px;
   }
 }
