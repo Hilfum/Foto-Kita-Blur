@@ -1,208 +1,3 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Foto Kita Blur — Gesture Detector</title>
-<style>
-  :root {
-    --bg: #0d0d10;
-    --panel: #16161a;
-    --accent: #d4537e;
-    --text-muted: #8a8a93;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
-    color: #f1f1f1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-height: 100vh;
-    padding: 24px 16px 48px;
-  }
-  h1 {
-    font-size: 20px;
-    font-weight: 600;
-    margin: 0 0 4px;
-    text-align: center;
-  }
-  p.subtitle {
-    color: var(--text-muted);
-    font-size: 13px;
-    margin: 0 0 20px;
-    text-align: center;
-  }
-  .stage {
-    position: relative;
-    width: 100%;
-    max-width: 480px;
-    aspect-ratio: 3/4;
-    background: #000;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
-  }
-  video, canvas {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  video { transform: scaleX(-1); }
-  #output {
-    z-index: 2;
-    transform: scaleX(-1);
-  }
-  .hud {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    right: 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    z-index: 3;
-    pointer-events: none;
-  }
-  .badge {
-    background: rgba(0,0,0,0.55);
-    backdrop-filter: blur(4px);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.25s ease;
-  }
-  .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #4ade80;
-    transition: background 0.25s ease;
-  }
-  .badge.blurred .dot { background: var(--accent); }
-  .badge.loading .dot { background: #facc15; }
-  .controls {
-    margin-top: 18px;
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  button {
-    background: var(--panel);
-    color: #f1f1f1;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 10px;
-    padding: 10px 16px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
-  button:hover { background: #1f1f24; }
-  button:active { transform: scale(0.97); }
-  button.primary {
-    background: var(--accent);
-    border-color: var(--accent);
-  }
-  button.primary:hover { background: #c2456e; }
-  .panel {
-    margin-top: 20px;
-    background: var(--panel);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
-    padding: 14px 18px;
-    width: 100%;
-    max-width: 480px;
-    font-size: 13px;
-    color: var(--text-muted);
-    line-height: 1.6;
-  }
-  .panel b { color: #f1f1f1; }
-  .slider-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-  }
-  .slider-row label {
-    font-size: 12px;
-    color: var(--text-muted);
-    min-width: 90px;
-  }
-  input[type=range] {
-    flex: 1;
-    accent-color: var(--accent);
-  }
-  .slider-row span {
-    font-size: 12px;
-    min-width: 28px;
-    text-align: right;
-  }
-  #status-text {
-    position: absolute;
-    bottom: 12px;
-    left: 12px;
-    right: 12px;
-    text-align: center;
-    z-index: 3;
-    font-size: 13px;
-    color: rgba(255,255,255,0.85);
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-    pointer-events: none;
-  }
-</style>
-</head>
-<body>
-
-<h1>Foto Kita Blur</h1>
-<p class="subtitle">Acungkan gesture ✌️ untuk mengaktifkan efek blur</p>
-
-<div class="stage" id="stage">
-  <video id="video" playsinline autoplay muted></video>
-  <canvas id="output"></canvas>
-  <div class="hud">
-    <div class="badge loading" id="status-badge">
-      <div class="dot"></div>
-      <span id="status-label">Memuat model...</span>
-    </div>
-  </div>
-  <div id="status-text"></div>
-</div>
-
-<div class="controls">
-  <button id="btn-start" class="primary">Mulai kamera</button>
-  <button id="btn-snapshot">Ambil foto</button>
-  <button id="btn-switch">Ganti kamera</button>
-</div>
-
-<div class="panel">
-  <div><b>Cara pakai:</b> izinkan akses kamera, lalu tunjukkan gesture peace ✌️ (telunjuk dan jari tengah membentuk huruf V). Blur akan muncul perlahan (fade in) dan hilang perlahan saat gesture dilepas (fade out).</div>
-  <div class="slider-row">
-    <label>Intensitas blur</label>
-    <input type="range" id="blur-amount" min="4" max="40" value="22">
-    <span id="blur-amount-val">22px</span>
-  </div>
-  <div class="slider-row">
-    <label>Kecepatan transisi</label>
-    <input type="range" id="fade-speed" min="1" max="10" value="4">
-    <span id="fade-speed-val">4</span>
-  </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
-
-<script>
 (function () {
   const video = document.getElementById('video');
   const canvas = document.getElementById('output');
@@ -220,7 +15,6 @@
   const fadeVal = document.getElementById('fade-speed-val');
 
   let stream = null;
-  let camera = null;
   let hands = null;
   let facingMode = 'user';
   let running = false;
@@ -229,12 +23,12 @@
   let fadeStep = 0.04;
   let currentBlur = 0;
   let peaceDetected = false;
-  let lastFrame = null;
 
   blurSlider.addEventListener('input', () => {
     blurAmount = parseInt(blurSlider.value, 10);
     blurVal.textContent = blurAmount + 'px';
   });
+
   fadeSlider.addEventListener('input', () => {
     const v = parseInt(fadeSlider.value, 10);
     fadeStep = v * 0.01;
@@ -310,9 +104,9 @@
 
       const targetBlur = peaceDetected ? blurAmount : 0;
       if (currentBlur < targetBlur) {
-        currentBlur = Math.min(targetBlur, currentBlur + (blurAmount * fadeStep));
+        currentBlur = Math.min(targetBlur, currentBlur + blurAmount * fadeStep);
       } else if (currentBlur > targetBlur) {
-        currentBlur = Math.max(targetBlur, currentBlur - (blurAmount * fadeStep));
+        currentBlur = Math.max(targetBlur, currentBlur - blurAmount * fadeStep);
       }
 
       ctx.filter = currentBlur > 0.05 ? `blur(${currentBlur}px)` : 'none';
@@ -384,6 +178,3 @@
     link.click();
   });
 })();
-</script>
-</body>
-</html>

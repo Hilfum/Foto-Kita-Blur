@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Foto Kita Blur — Gesture Detector</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>Foto Kita Blur</h1>
+<p class="subtitle">Acungkan gesture ✌️ untuk mengaktifkan efek blur</p>
+
+<div class="stage" id="stage">
+  <video id="video" playsinline autoplay muted></video>
+  <canvas id="output"></canvas>
+  <div class="hud">
+    <div class="badge loading" id="status-badge">
+      <div class="dot"></div>
+      <span id="status-label">Memuat model...</span>
+    </div>
+  </div>
+  <div id="status-text"></div>
+</div>
+
+<div class="controls">
+  <button id="btn-start" class="primary">Mulai kamera</button>
+  <button id="btn-snapshot">Ambil foto</button>
+  <button id="btn-switch">Ganti kamera</button>
+</div>
+
+<div class="panel">
+  <div><b>Cara pakai:</b> izinkan akses kamera, lalu tunjukkan gesture peace ✌️ (telunjuk dan jari tengah membentuk huruf V). Blur akan muncul perlahan (fade in) dan hilang perlahan saat gesture dilepas (fade out).</div>
+  <div class="slider-row">
+    <label>Intensitas blur</label>
+    <input type="range" id="blur-amount" min="4" max="40" value="22">
+    <span id="blur-amount-val">22px</span>
+  </div>
+  <div class="slider-row">
+    <label>Kecepatan transisi</label>
+    <input type="range" id="fade-speed" min="1" max="10" value="4">
+    <span id="fade-speed-val">4</span>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+<script src="script.js"></script>
+</body>
+</html>
