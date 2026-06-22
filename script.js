@@ -13,35 +13,21 @@
   const btnStop = document.getElementById('btn-stop');
   const btnSnapshot = document.getElementById('btn-snapshot');
   const btnSwitch = document.getElementById('btn-switch');
-  
-  const blurSlider = document.getElementById('blur-amount');
-  const blurVal = document.getElementById('blur-amount-val');
-  const fadeSlider = document.getElementById('fade-speed');
-  const fadeVal = document.getElementById('fade-speed-val');
 
   let stream = null;
   let hands = null;
   let facingMode = 'user';
   let running = false;
 
-  let blurAmount = 22;
-  let fadeStep = 0.04;
+  // Fixed parameters (8px blur, transition speed 4)
+  const blurAmount = 8;
+  const fadeStep = 0.04;
+  
   let currentBlur = 0;
   let peaceDetected = false;
 
   let processFrameId = null;
   let renderLoopId = null;
-
-  blurSlider.addEventListener('input', () => {
-    blurAmount = parseInt(blurSlider.value, 10);
-    blurVal.textContent = blurAmount + 'px';
-  });
-
-  fadeSlider.addEventListener('input', () => {
-    const v = parseInt(fadeSlider.value, 10);
-    fadeStep = v * 0.01;
-    fadeVal.textContent = v;
-  });
 
   function dist(a, b) {
     return Math.hypot(a.x - b.x, a.y - b.y);
