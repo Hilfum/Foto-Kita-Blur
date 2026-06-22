@@ -102,10 +102,14 @@
   function resizeCanvas() {
     if (video.videoWidth && video.videoHeight) {
       stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
-      if (video.videoWidth > video.videoHeight) {
-        stage.style.maxWidth = '640px';
+      if (window.innerWidth >= 768) {
+        stage.style.maxWidth = '100%';
       } else {
-        stage.style.maxWidth = '480px';
+        if (video.videoWidth > video.videoHeight) {
+          stage.style.maxWidth = '100%';
+        } else {
+          stage.style.maxWidth = '480px';
+        }
       }
     }
     canvas.width = video.videoWidth || stage.clientWidth;
@@ -130,7 +134,7 @@
 
       if (currentBlur > 1) {
         setBadge('blurred', 'Foto kita blur ✌️');
-        statusText.textContent = 'Memori tersimpan, gambarnya memudar...';
+        statusText.textContent = 'Foto Kita Blur...';
       } else {
         setBadge('online', 'Live');
         statusText.textContent = '';
