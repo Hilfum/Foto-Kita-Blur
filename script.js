@@ -92,6 +92,14 @@
   }
 
   function resizeCanvas() {
+    if (video.videoWidth && video.videoHeight) {
+      stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+      if (video.videoWidth > video.videoHeight) {
+        stage.style.maxWidth = '640px';
+      } else {
+        stage.style.maxWidth = '480px';
+      }
+    }
     canvas.width = video.videoWidth || stage.clientWidth;
     canvas.height = video.videoHeight || stage.clientHeight;
   }
@@ -138,7 +146,7 @@
         stream.getTracks().forEach((t) => t.stop());
       }
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 720 }, height: { ideal: 960 } },
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
       video.srcObject = stream;
