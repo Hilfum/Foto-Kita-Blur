@@ -886,6 +886,10 @@ video.active {
   animation: fadeInModal 0.25s ease-out forwards;
 }
 
+.modal-overlay.closing {
+  animation: fadeOutModal 0.3s ease-in forwards;
+}
+
 .modal-card {
   background: rgba(20, 20, 27, 0.9);
   backdrop-filter: blur(24px);
@@ -902,12 +906,28 @@ video.active {
   gap: 16px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 
               0 0 20px rgba(var(--accent-rgb), 0.05);
-  animation: modalScaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.modal-card.open {
+  animation: modalScaleUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.modal-card.closing-confirm {
+  animation: modalConfirmExit 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) forwards;
+}
+
+.modal-card.closing-cancel {
+  animation: modalCancelExit 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
 @keyframes fadeInModal {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+@keyframes fadeOutModal {
+  from { opacity: 1; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  to { opacity: 0; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
 }
 
 @keyframes modalScaleUp {
@@ -918,6 +938,34 @@ video.active {
   to {
     transform: scale(1) translateY(0);
     opacity: 1;
+  }
+}
+
+@keyframes modalConfirmExit {
+  0% {
+    transform: scale(1) translateY(0) rotate(0deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+  20% {
+    transform: scale(1.03) translateY(4px) rotate(1deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8) translateY(-100px) rotate(-8deg);
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+
+@keyframes modalCancelExit {
+  0% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9) translateY(100px);
+    opacity: 0;
   }
 }
 

@@ -13,7 +13,7 @@ export default function App() {
   const [countdown, setCountdown] = useState(0);
   const [isFlashing, setIsFlashing] = useState(false);
   const [capturedPhotos, setCapturedPhotos] = useState([]);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [confirmModalState, setConfirmModalState] = useState(null); // null | 'open' | 'closing-confirm' | 'closing-cancel'
 
   const timerIntervalRef = useRef(null);
 
@@ -355,7 +355,7 @@ export default function App() {
   };
 
   const clearAllPhotos = () => {
-    setShowClearConfirm(true);
+    setConfirmModalState('open');
   };
 
   // Restart camera when facingMode changes, if it is currently active
@@ -714,9 +714,9 @@ export default function App() {
       )}
 
       {/* Custom Confirmation Modal Dialog */}
-      {showClearConfirm && (
-        <div className="modal-overlay">
-          <div className="modal-card">
+      {confirmModalState && (
+        <div className={`modal-overlay ${confirmModalState === 'closing-confirm' || confirmModalState === 'closing-cancel' ? 'closing' : ''}`}>
+          <div className={`modal-card ${confirmModalState}`}>
             <div className="modal-icon-wrapper">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 6 5 6 21 6" />
@@ -729,15 +729,23 @@ export default function App() {
               <button 
                 className="btn btn-danger" 
                 onClick={() => {
-                  setCapturedPhotos([]);
-                  setShowClearConfirm(false);
+                  setConfirmModalState('closing-confirm');
+                  setTimeout(() => {
+                    setCapturedPhotos([]);
+                    setConfirmModalState(null);
+                  }, 400); // Wait for exit animation to complete
                 }}
               >
                 Ya, Hapus
               </button>
               <button 
                 className="btn btn-secondary" 
-                onClick={() => setShowClearConfirm(false)}
+                onClick={() => {
+                  setConfirmModalState('closing-cancel');
+                  setTimeout(() => {
+                    setConfirmModalState(null);
+                  }, 300); // Wait for exit animation to complete
+                }}
               >
                 Batal
               </button>
