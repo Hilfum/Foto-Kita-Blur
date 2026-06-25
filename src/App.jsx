@@ -7,6 +7,16 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isModelLoading, setIsModelLoading] = useState(false);
 
+  // New States for Orientation Mode, Timer, and Session Gallery
+  const [orientationMode, setOrientationMode] = useState(null); // 'portrait' | 'landscape' | null
+  const [timerDuration, setTimerDuration] = useState(3); // default 3s
+  const [countdown, setCountdown] = useState(0);
+  const [isFlashing, setIsFlashing] = useState(false);
+  const [capturedPhotos, setCapturedPhotos] = useState([]);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const timerIntervalRef = useRef(null);
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const stageRef = useRef(null);
@@ -84,7 +94,12 @@ export default function App() {
     if (!video || !canvas || !stage) return;
 
     if (video.videoWidth && video.videoHeight) {
-      stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+      // Force aspect ratio according to selection
+      if (orientationMode === 'portrait') {
+        stage.style.aspectRatio = '3 / 4';
+      } else {
+        stage.style.aspectRatio = '16 / 9';
+      }
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
     } else {
@@ -191,6 +206,13 @@ export default function App() {
     peaceDetectedRef.current = false;
     currentBlurRef.current = 0;
 
+    // Clear active timer interval
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    setCountdown(0);
+
     if (processFrameIdRef.current) {
       cancelAnimationFrame(processFrameIdRef.current);
       processFrameIdRef.current = null;
@@ -228,12 +250,112 @@ export default function App() {
     setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
   };
 
-  const takeSnapshot = () => {
-    if (!canvasRef.current) return;
+  const triggerCapture = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Camera flash visual effect
+    setIsFlashing(true);
+    setTimeout(() => setIsFlashing(false), 250);
+
+    // Determine target aspect ratio based on orientationMode
+    let targetRatio = 16/9; // landscape default
+    if (orientationMode === 'portrait') {
+      targetRatio = 3/4; // portrait default
+    }
+
+    const currentRatio = canvas.width / canvas.height;
+    let finalDataUrl = '';
+
+    // If ratios match closely, don't crop
+    if (Math.abs(currentRatio - targetRatio) < 0.05) {
+      finalDataUrl = canvas.toDataURL('image/png');
+    } else {
+      // Create temporary canvas to crop the image
+      const tempCanvas = document.createElement('canvas');
+      let sX = 0, sY = 0, sW = canvas.width, sH = canvas.height;
+      let dW = canvas.width, dH = canvas.height;
+
+      if (currentRatio > targetRatio) {
+        // Source is wider (e.g. landscape camera stream in portrait mode) - Crop sides
+        sW = canvas.height * targetRatio;
+        sX = (canvas.width - sW) / 2;
+        dW = sW;
+        dH = sH;
+      } else {
+        // Source is narrower (e.g. portrait camera stream in landscape mode) - Crop top/bottom
+        sH = canvas.width / targetRatio;
+        sY = (canvas.height - sH) / 2;
+        dW = sW;
+        dH = sH;
+      }
+
+      tempCanvas.width = dW;
+      tempCanvas.height = dH;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (tempCtx) {
+        tempCtx.drawImage(canvas, sX, sY, sW, sH, 0, 0, dW, dH);
+        finalDataUrl = tempCanvas.toDataURL('image/png');
+      } else {
+        finalDataUrl = canvas.toDataURL('image/png');
+      }
+    }
+
+    if (finalDataUrl) {
+      setCapturedPhotos((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          dataUrl: finalDataUrl,
+        },
+      ]);
+    }
+  };
+
+  const handleCaptureClick = () => {
+    if (countdown > 0) return; // already counting down
+
+    if (timerDuration > 0) {
+      setCountdown(timerDuration);
+      let count = timerDuration;
+      timerIntervalRef.current = setInterval(() => {
+        count -= 1;
+        setCountdown(count);
+        if (count === 0) {
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+          triggerCapture();
+        }
+      }, 1000);
+    } else {
+      triggerCapture();
+    }
+  };
+
+  const downloadSinglePhoto = (dataUrl, index) => {
     const link = document.createElement('a');
-    link.download = 'foto-kita-blur.png';
-    link.href = canvasRef.current.toDataURL('image/png');
+    link.download = `foto-kita-blur-${index + 1}.png`;
+    link.href = dataUrl;
     link.click();
+  };
+
+  const downloadAllPhotos = () => {
+    capturedPhotos.forEach((photo, index) => {
+      setTimeout(() => {
+        const link = document.createElement('a');
+        link.download = `foto-kita-blur-${index + 1}.png`;
+        link.href = photo.dataUrl;
+        link.click();
+      }, index * 200);
+    });
+  };
+
+  const deletePhoto = (id) => {
+    setCapturedPhotos((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const clearAllPhotos = () => {
+    setShowClearConfirm(true);
   };
 
   // Restart camera when facingMode changes, if it is currently active
@@ -268,95 +390,262 @@ export default function App() {
         <div className="blob blob-3"></div>
       </div>
 
-      <div className="app-card">
-        <header>
-          <div className="header-logo-row">
-            <h1>Foto Kita Blur</h1>
-          </div>
-        </header>
+      {/* Landing Selector Screen */}
+      {!orientationMode ? (
+        <div className="app-card mode-selector-card">
+          <header className="fade-in-element">
+            <div className="header-logo-row">
+              <h1>Foto Kita Blur</h1>
+            </div>
+            <p className="subtitle">
+              Pilih mode tampilan kamera yang sesuai dengan perangkat dan gaya foto Anda.
+            </p>
+          </header>
 
-        <div className="stage-container">
-          <div
-            ref={stageRef}
-            className={`stage ${cameraActive ? 'active-camera' : ''}`}
-            id="stage"
-          >
-            {/* Camera Placeholder */}
-            <div className={`camera-placeholder ${cameraActive ? 'hidden' : ''}`}>
-              <div className="placeholder-icon-wrapper">
-                <div className="pulse-ring"></div>
+          <div className="mode-options-container fade-in-element fade-in-delay-1">
+            <button 
+              className="mode-option-btn"
+              onClick={() => setOrientationMode('portrait')}
+            >
+              <div className="mode-icon-wrapper">
+                <svg className="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+                  <line x1="12" y1="18" x2="12" y2="18" />
+                </svg>
+              </div>
+              <div className="mode-text-wrapper">
+                <div className="mode-title">Mode Portrait (Tegak)</div>
+                <div className="mode-desc">Cocok untuk HP, reels, story, dan foto gaya vertikal.</div>
+              </div>
+            </button>
+
+            <button 
+              className="mode-option-btn"
+              onClick={() => setOrientationMode('landscape')}
+            >
+              <div className="mode-icon-wrapper">
+                <svg className="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
+                </svg>
+              </div>
+              <div className="mode-text-wrapper">
+                <div className="mode-title">Mode Landscape (Mendatar)</div>
+                <div className="mode-desc">Cocok untuk laptop, PC, dan tangkapan layar lebar.</div>
+              </div>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className={`app-card mode-${orientationMode}`}>
+          <header className="fade-in-element">
+            <div className="header-logo-row">
+              <h1>Foto Kita Blur</h1>
+            </div>
+          </header>
+
+          <div className="stage-container fade-in-element fade-in-delay-1">
+            <div
+              ref={stageRef}
+              className={`stage ${cameraActive ? 'active-camera' : ''}`}
+              id="stage"
+            >
+              {/* Camera Placeholder */}
+              <div className={`camera-placeholder ${cameraActive ? 'hidden' : ''}`}>
+                <div className="placeholder-icon-wrapper">
+                  <div className="pulse-ring"></div>
+                  <svg
+                    className="placeholder-icon"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                </div>
+                <div className="placeholder-text-group">
+                  <div className="placeholder-title">Kamera Nonaktif</div>
+                  <div className="placeholder-desc">
+                    Tekan tombol "Mulai Kamera" di bawah untuk memulai tren foto estetik ini.
+                  </div>
+                </div>
+              </div>
+
+              {/* Video Stream & Output Canvas */}
+              <video
+                ref={videoRef}
+                playsInline
+                autoPlay
+                muted
+                className={cameraActive ? 'active' : ''}
+                style={transformStyle}
+              ></video>
+
+              <canvas
+                ref={canvasRef}
+                id="output"
+                style={transformStyle}
+              ></canvas>
+
+              {statusText && <div id="status-text">{statusText}</div>}
+
+              {/* Timer Countdown Overlay */}
+              {countdown > 0 && <div className="countdown-overlay">{countdown}</div>}
+
+              {/* Shutter Flash Effect */}
+              {isFlashing && <div className="flash-overlay"></div>}
+            </div>
+          </div>
+
+          {/* Session Gallery */}
+          {capturedPhotos.length > 0 && (
+            <div className="gallery-section fade-in-element fade-in-delay-2">
+              <div className="gallery-header">
+                <h3>Hasil Foto Sesi Ini ({capturedPhotos.length})</h3>
+                <div className="gallery-actions">
+                  <button className="btn-gallery-action download-all" onClick={downloadAllPhotos}>
+                    Download Semua
+                  </button>
+                  <button className="btn-gallery-action delete-all" onClick={clearAllPhotos}>
+                    Hapus Semua
+                  </button>
+                </div>
+              </div>
+              <div className="gallery-scroll-container">
+                {capturedPhotos.map((photo, index) => (
+                  <div key={photo.id} className="gallery-item">
+                    <img src={photo.dataUrl} alt={`Captured ${index + 1}`} />
+                    <div className="item-overlay">
+                      <button 
+                        className="item-btn btn-download" 
+                        onClick={() => downloadSinglePhoto(photo.dataUrl, index)}
+                        title="Unduh foto"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                        </svg>
+                      </button>
+                      <button 
+                        className="item-btn btn-delete" 
+                        onClick={() => deletePhoto(photo.id)}
+                        title="Hapus foto"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Controls */}
+          <div className="controls fade-in-element fade-in-delay-2">
+            <button
+              id="btn-change-mode-control"
+              className="btn btn-secondary"
+              onClick={() => {
+                stopCamera();
+                setOrientationMode(null);
+              }}
+              title="Kembali ke pemilihan layout"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              <span className="btn-text">Ubah Tampilan</span>
+            </button>
+
+            <button
+              id="btn-snapshot"
+              className="btn btn-secondary"
+              disabled={!cameraActive || countdown > 0}
+              onClick={handleCaptureClick}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+              <span className="btn-text">Ambil Foto</span>
+            </button>
+
+            {!cameraActive ? (
+              <button
+                id="btn-start"
+                className="btn btn-primary"
+                disabled={isConnecting || isModelLoading}
+                onClick={startCamera}
+              >
                 <svg
-                  className="placeholder-icon"
-                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="1.5"
+                  strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
+                  <path d="M23 7l-7 5 7 5V7z" />
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
                 </svg>
-              </div>
-              <div className="placeholder-text-group">
-                <div className="placeholder-title">Kamera Nonaktif</div>
-                <div className="placeholder-desc">
-                  Tekan tombol "Mulai Kamera" di bawah untuk memulai tren foto estetik ini.
-                </div>
-              </div>
-            </div>
+                <span className="btn-text">{getStartButtonText()}</span>
+              </button>
+            ) : (
+              <button
+                id="btn-stop"
+                className="btn btn-danger"
+                onClick={stopCamera}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <rect x="9" y="9" width="6" height="6" />
+                </svg>
+                <span className="btn-text">Matiin Kamera</span>
+              </button>
+            )}
 
-            {/* Video Stream & Output Canvas */}
-            <video
-              ref={videoRef}
-              playsInline
-              autoPlay
-              muted
-              className={cameraActive ? 'active' : ''}
-              style={transformStyle}
-            ></video>
-
-            <canvas
-              ref={canvasRef}
-              id="output"
-              style={transformStyle}
-            ></canvas>
-
-            {statusText && <div id="status-text">{statusText}</div>}
-          </div>
-        </div>
-
-        {/* Controls */}
-        <div className="controls">
-          <button
-            id="btn-snapshot"
-            className="btn btn-secondary"
-            disabled={!cameraActive}
-            onClick={takeSnapshot}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-              <circle cx="12" cy="13" r="4" />
-            </svg>
-            <span className="btn-text">Ambil Foto</span>
-          </button>
-
-          {!cameraActive ? (
             <button
-              id="btn-start"
-              className="btn btn-primary"
-              disabled={isConnecting || isModelLoading}
-              onClick={startCamera}
+              id="btn-switch"
+              className="btn btn-secondary"
+              disabled={!cameraActive}
+              onClick={switchCamera}
             >
               <svg
                 width="18"
@@ -368,16 +657,24 @@ export default function App() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <path d="M23 7l-7 5 7 5V7z" />
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
               </svg>
-              <span>{getStartButtonText()}</span>
+              <span className="btn-text">Mirror Kamera</span>
             </button>
-          ) : (
+
             <button
-              id="btn-stop"
-              className="btn btn-danger"
-              onClick={stopCamera}
+              id="btn-timer"
+              className="btn btn-secondary"
+              disabled={!cameraActive}
+              onClick={() => {
+                setTimerDuration((prev) => {
+                  if (prev === 0) return 3;
+                  if (prev === 3) return 5;
+                  if (prev === 5) return 10;
+                  if (prev === 10) return 15;
+                  return 0; // cycles: 3 -> 5 -> 10 -> 15 -> 0 (off)
+                });
+              }}
             >
               <svg
                 width="18"
@@ -386,57 +683,68 @@ export default function App() {
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
               >
                 <circle cx="12" cy="12" r="10" />
-                <rect x="9" y="9" width="6" height="6" />
+                <polyline points="12 6 12 12 16 14" />
               </svg>
-              <span>Matiin Kamera</span>
+              <span className="btn-text-long">Timer: </span>
+              <span className="timer-val">{timerDuration === 0 ? 'Off' : `${timerDuration}s`}</span>
             </button>
-          )}
+          </div>
 
-          <button
-            id="btn-switch"
-            className="btn btn-secondary"
-            disabled={!cameraActive}
-            onClick={switchCamera}
-          >
+          {/* Footer info */}
+          <div className="tip-footer fade-in-element fade-in-delay-3">
             <svg
-              width="18"
-              height="18"
+              width="14"
+              height="14"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
             </svg>
-            <span className="btn-text">Mirror Kamera</span>
-          </button>
+            <span>Pose ✌️ untuk mengaktifkan efek blur lambat secara otomatis.</span>
+          </div>
         </div>
+      )}
 
-        {/* Footer info */}
-        <div className="tip-footer">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="16" x2="12" y2="12" />
-            <line x1="12" y1="8" x2="12.01" y2="8" />
-          </svg>
-          <span>Pose ✌️ untuk mengaktifkan efek blur lambat secara otomatis.</span>
+      {/* Custom Confirmation Modal Dialog */}
+      {showClearConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <div className="modal-icon-wrapper">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </div>
+            <h3>Hapus Semua Foto?</h3>
+            <p>Tindakan ini akan menghapus semua foto di galeri sesi ini. Anda tidak dapat membatalkan tindakan ini.</p>
+            <div className="modal-buttons">
+              <button 
+                className="btn btn-danger" 
+                onClick={() => {
+                  setCapturedPhotos([]);
+                  setShowClearConfirm(false);
+                }}
+              >
+                Ya, Hapus
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setShowClearConfirm(false)}
+              >
+                Batal
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

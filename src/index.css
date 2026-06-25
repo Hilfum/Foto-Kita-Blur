@@ -37,9 +37,15 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 20px;
+  padding: 12px 20px;
   position: relative;
   overflow-x: hidden;
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
 }
 
 #root {
@@ -113,6 +119,7 @@ body {
 .app-card {
   width: 100%;
   max-width: 500px;
+  margin: auto;
   background: var(--card-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -127,6 +134,7 @@ body {
   position: relative;
   z-index: 1;
   transition: max-width 0.4s ease, padding 0.4s ease;
+  animation: cardFadeIn 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 header {
@@ -224,7 +232,7 @@ h1 {
 
 .stage.active-camera {
   aspect-ratio: 3/4;
-  max-height: 75vh;
+  max-height: calc(100vh - 310px);
 }
 
 video,
@@ -362,10 +370,10 @@ video.active {
 
 .controls {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 10px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
   width: 100%;
-  max-width: 480px;
+  max-width: 440px;
   margin: 0 auto;
 }
 
@@ -378,7 +386,8 @@ video.active {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 12px;
+  min-width: 44px;
   border-radius: 12px;
   cursor: pointer;
   border: 1px solid transparent;
@@ -437,7 +446,8 @@ video.active {
   display: none !important;
 }
 
-.btn-text {
+.btn-text,
+.btn-text-long {
   display: none;
 }
 
@@ -460,12 +470,6 @@ video.active {
   flex-shrink: 0;
 }
 
-@media (min-width: 600px) {
-  .btn-text {
-    display: inline;
-  }
-}
-
 @media (min-width: 768px) {
   .app-card {
     width: 95%;
@@ -481,11 +485,7 @@ video.active {
 
   .stage.active-camera {
     aspect-ratio: 16/9;
-    max-height: 80vh;
-  }
-
-  .controls {
-    max-width: 640px;
+    max-height: calc(100vh - 340px);
   }
 
   header {
@@ -501,10 +501,454 @@ video.active {
   h1 {
     font-size: 40px;
   }
+
+  /* Specific styles for desktop landscape mode controls */
+  .app-card.mode-landscape .controls {
+    max-width: 820px;
+  }
+
+  .app-card.mode-landscape .btn {
+    padding: 12px 18px;
+  }
+
+  .app-card.mode-landscape .btn-text,
+  .app-card.mode-landscape .btn-text-long {
+    display: inline;
+  }
 }
 
 @media (max-width: 480px) {
   body {
     padding: 12px;
   }
+}
+
+/* Portrait Layout Modifiers */
+.app-card.mode-portrait {
+  max-width: 480px !important;
+}
+
+.app-card.mode-portrait .stage {
+  aspect-ratio: 3/4 !important;
+}
+
+.app-card.mode-portrait .stage.active-camera {
+  aspect-ratio: 3/4 !important;
+  max-height: calc(100vh - 310px) !important;
+}
+
+/* Landing Screen Mode Selection */
+.app-card.mode-selector-card {
+  max-width: 500px;
+}
+
+@media (min-width: 768px) {
+  .app-card.mode-selector-card {
+    max-width: 600px;
+  }
+}
+
+.mode-options-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.mode-option-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  transition: var(--transition);
+  text-align: left;
+  color: var(--text);
+  width: 100%;
+}
+
+.mode-option-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.mode-option-btn:active {
+  transform: translateY(0);
+}
+
+.mode-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--accent);
+  transition: var(--transition);
+}
+
+.mode-option-btn:hover .mode-icon-wrapper {
+  background: rgba(var(--accent-rgb), 0.15);
+  color: var(--accent);
+}
+
+.mode-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.mode-text-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mode-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.mode-desc {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+@media (min-width: 600px) {
+  .mode-options-container {
+    flex-direction: row;
+  }
+  
+  .mode-option-btn {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 24px 16px;
+    gap: 12px;
+  }
+  
+  .mode-text-wrapper {
+    align-items: center;
+  }
+}
+
+/* Back Button for Mode Changer moved to controls */
+
+/* Countdown Overlay */
+.countdown-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 80px;
+  font-weight: 800;
+  color: #fff;
+  font-family: var(--font);
+  animation: countdownPulse 1s infinite;
+}
+
+@keyframes countdownPulse {
+  0% { transform: scale(1.2); opacity: 0; }
+  20% { opacity: 1; }
+  80% { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0; }
+}
+
+/* Flash Overlay */
+.flash-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  z-index: 6;
+  opacity: 0;
+  animation: flashEffect 0.25s ease-out;
+  pointer-events: none;
+}
+
+@keyframes flashEffect {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Session Gallery */
+.gallery-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 12px;
+  margin-top: 4px;
+}
+
+.gallery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.gallery-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gallery-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-gallery-action {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: var(--transition);
+}
+
+.btn-gallery-action.download-all {
+  color: var(--success);
+}
+
+.btn-gallery-action.download-all:hover {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.btn-gallery-action.delete-all {
+  color: var(--danger);
+}
+
+.btn-gallery-action.delete-all:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.gallery-scroll-container {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  width: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.gallery-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.gallery-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.gallery-item {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.item-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0;
+  transition: var(--transition);
+}
+
+.gallery-item:hover .item-overlay {
+  opacity: 1;
+}
+
+.item-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  transition: var(--transition);
+}
+
+.item-btn:hover {
+  transform: scale(1.1);
+}
+
+.btn-download {
+  background: var(--success);
+}
+
+.btn-delete {
+  background: var(--danger);
+}
+
+/* Card Entry Animation Keyframes */
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Staggered Entry Animation for Elements */
+.fade-in-element {
+  opacity: 0;
+  animation: elementFadeIn 0.45s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.fade-in-delay-1 {
+  animation-delay: 0.1s;
+}
+
+.fade-in-delay-2 {
+  animation-delay: 0.18s;
+}
+
+.fade-in-delay-3 {
+  animation-delay: 0.26s;
+}
+
+@keyframes elementFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Custom Confirmation Modal Dialog */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(8, 8, 12, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeInModal 0.25s ease-out forwards;
+}
+
+.modal-card {
+  background: rgba(20, 20, 27, 0.9);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 24px;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 
+              0 0 20px rgba(var(--accent-rgb), 0.05);
+  animation: modalScaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalScaleUp {
+  from {
+    transform: scale(0.9) translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-icon-wrapper {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.modal-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.modal-card p {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.modal-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
 }
