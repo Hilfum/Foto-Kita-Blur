@@ -15,14 +15,26 @@ export default function App() {
   const [isFlashing, setIsFlashing] = useState(false);
   const [capturedPhotos, setCapturedPhotos] = useState([]);
   const [confirmModalState, setConfirmModalState] = useState(null); // null | 'open' | 'closing-confirm' | 'closing-cancel'
+  const [deleteTarget, setDeleteTarget] = useState(null); // null | 'all' | photoId (string)
   const [captureMode, setCaptureMode] = useState('photo'); // 'photo' | 'video'
+  const [isSwitchingMode, setIsSwitchingMode] = useState(false);
+  const [deletingPhotoId, setDeletingPhotoId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [musicFile, setMusicFile] = useState(null);
-  const [musicUrl, setMusicUrl] = useState(salPriadiMusic);
+  const [musicUrl] = useState(salPriadiMusic);
+  const [musicStartTime, setMusicStartTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(15);
+  const [audioDuration, setAudioDuration] = useState(244); // default 4:04 fallback
+  const [activePreviewItem, setActivePreviewItem] = useState(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+
+  // Derived music end time
+  const musicEndTime = musicStartTime + videoDuration;
 
   const mediaRecorderRef = useRef(null);
   const audioRef = useRef(null);
+  const previewAudioRef = useRef(null);
+  const autoplayTimeoutRef = useRef(null);
   const recordingIntervalRef = useRef(null);
   const audioCtxRef = useRef(null);
   const streamDestRef = useRef(null);
@@ -143,7 +155,13 @@ export default function App() {
         }
 
         ctx.filter = currentBlurRef.current > 0.05 ? `blur(${currentBlurRef.current}px)` : 'none';
+        ctx.save();
+        if (facingMode === 'user') {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
 
         if (currentBlurRef.current > 1) {
           setStatusText('Foto Kita Blur...');
@@ -237,6 +255,7 @@ export default function App() {
       audioRef.current.pause();
       audioRef.current = null;
     }
+    stopPreview();
     if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
       audioCtxRef.current.close().catch(() => {});
       audioCtxRef.current = null;
@@ -342,6 +361,16 @@ export default function App() {
     }
   };
 
+  const handleModeChange = (newMode) => {
+    if (isRecording || isSwitchingMode) return;
+    setIsSwitchingMode(true);
+    setCaptureMode(newMode);
+    stopPreview();
+    setTimeout(() => {
+      setIsSwitchingMode(false);
+    }, 500);
+  };
+
   const handleCaptureClick = () => {
     if (countdown > 0) return; // already counting down
 
@@ -370,18 +399,12 @@ export default function App() {
     }
   };
 
-  const handleMusicChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setMusicFile(file);
-      const fileUrl = URL.createObjectURL(file);
-      setMusicUrl(fileUrl);
-    }
-  };
 
   const startRecording = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    stopPreview();
 
     try {
       setIsRecording(true);
@@ -402,6 +425,7 @@ export default function App() {
         audio = new Audio(musicUrl);
         audio.crossOrigin = 'anonymous';
         audio.loop = true;
+        audio.currentTime = musicStartTime;
         audioRef.current = audio;
 
         // 3. Connect nodes
@@ -478,7 +502,7 @@ export default function App() {
       recordingIntervalRef.current = setInterval(() => {
         elapsed += 1;
         setRecordingSeconds(elapsed);
-        if (elapsed >= 15) {
+        if (elapsed >= videoDuration) {
           stopRecording();
         }
       }, 1000);
@@ -542,12 +566,138 @@ export default function App() {
   };
 
   const deletePhoto = (id) => {
-    setCapturedPhotos((prev) => prev.filter((p) => p.id !== id));
+    setDeleteTarget(id);
+    setConfirmModalState('open');
   };
 
   const clearAllPhotos = () => {
+    setDeleteTarget('all');
     setConfirmModalState('open');
   };
+
+
+
+  const triggerAutoplayPreview = (startVal, endVal) => {
+    if (autoplayTimeoutRef.current) {
+      clearTimeout(autoplayTimeoutRef.current);
+    }
+    autoplayTimeoutRef.current = setTimeout(() => {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+
+      const audio = new Audio(musicUrl);
+      audio.crossOrigin = 'anonymous';
+      audio.currentTime = startVal;
+      audio.volume = 0.8;
+      previewAudioRef.current = audio;
+
+      audio.play().then(() => {
+        setIsPreviewPlaying(true);
+      }).catch((err) => {
+        console.log("Autoplay failed:", err);
+      });
+
+      const checkTimeInterval = setInterval(() => {
+        if (!previewAudioRef.current || previewAudioRef.current.paused) {
+          clearInterval(checkTimeInterval);
+          setIsPreviewPlaying(false);
+          return;
+        }
+        if (previewAudioRef.current.currentTime >= endVal) {
+          stopPreview();
+          clearInterval(checkTimeInterval);
+        }
+      }, 50);
+    }, 150);
+  };
+
+  const handleStartSliderChange = (val) => {
+    const maxStart = Math.max(0, audioDuration - videoDuration);
+    const newStart = Math.min(val, maxStart);
+    setMusicStartTime(newStart);
+    triggerAutoplayPreview(newStart, newStart + videoDuration);
+  };
+
+  const handleEndSliderChange = (val) => {
+    const minEnd = Math.min(audioDuration, videoDuration);
+    const newEnd = Math.max(minEnd, val);
+    const newStart = newEnd - videoDuration;
+    setMusicStartTime(newStart);
+    triggerAutoplayPreview(newStart, newEnd);
+  };
+
+  const handleDurationSelect = (selectedSecs) => {
+    setVideoDuration(selectedSecs);
+    const maxStart = Math.max(0, audioDuration - selectedSecs);
+    if (musicStartTime > maxStart) {
+      setMusicStartTime(maxStart);
+    }
+    stopPreview();
+  };
+
+  const startPreview = () => {
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    const audio = new Audio(musicUrl);
+    audio.crossOrigin = 'anonymous';
+    audio.currentTime = musicStartTime;
+    audio.volume = 0.8;
+    previewAudioRef.current = audio;
+
+    audio.play().then(() => {
+      setIsPreviewPlaying(true);
+    }).catch((err) => {
+      console.error("Error playing preview:", err);
+    });
+
+    const checkTimeInterval = setInterval(() => {
+      if (!previewAudioRef.current || previewAudioRef.current.paused) {
+        clearInterval(checkTimeInterval);
+        setIsPreviewPlaying(false);
+        return;
+      }
+      if (previewAudioRef.current.currentTime >= musicEndTime) {
+        stopPreview();
+        clearInterval(checkTimeInterval);
+      }
+    }, 50);
+  };
+
+  const stopPreview = () => {
+    if (autoplayTimeoutRef.current) {
+      clearTimeout(autoplayTimeoutRef.current);
+    }
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+    setIsPreviewPlaying(false);
+  };
+
+  // Load Sal Priadi music duration metadata
+  useEffect(() => {
+    const audioObj = new Audio(salPriadiMusic);
+    const handleLoadedMetadata = () => {
+      setAudioDuration(audioObj.duration);
+    };
+    audioObj.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audioObj.load();
+    return () => {
+      audioObj.removeEventListener('loadedmetadata', handleLoadedMetadata);
+    };
+  }, []);
+
+
 
   // Restart camera when facingMode changes, if it is currently active
   useEffect(() => {
@@ -560,6 +710,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       stopCamera();
+      stopPreview();
     };
   }, []);
 
@@ -569,9 +720,23 @@ export default function App() {
     return 'Mulai Kamera';
   };
 
+  // Stop preview when switching capture modes or when camera is deactivated
+  useEffect(() => {
+    stopPreview();
+  }, [captureMode, cameraActive]);
+
+  const formatTime = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
   const transformStyle = {
     transform: facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)',
   };
+
+  const startPercent = audioDuration > 0 ? (musicStartTime / audioDuration) * 100 : 0;
+  const endPercent = audioDuration > 0 ? (musicEndTime / audioDuration) * 100 : 0;
 
   return (
     <>
@@ -694,7 +859,6 @@ export default function App() {
               <canvas
                 ref={canvasRef}
                 id="output"
-                style={transformStyle}
               ></canvas>
 
               {statusText && <div id="status-text">{statusText}</div>}
@@ -704,92 +868,17 @@ export default function App() {
 
               {/* Shutter Flash Effect */}
               {isFlashing && <div className="flash-overlay"></div>}
+
+              {/* Mode Switch Overlay */}
+              {isSwitchingMode && (
+                <div className="mode-switch-overlay">
+                  <div className="mode-switch-badge">
+                    {captureMode === 'video' ? 'VIDEO' : 'FOTO'}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Session Gallery */}
-          {/* Session Gallery */}
-          {capturedPhotos.length > 0 && (
-            <div className="gallery-section fade-in-element fade-in-delay-2">
-              <div className="gallery-header">
-                <h3>Hasil Foto & Video Sesi Ini ({capturedPhotos.length})</h3>
-                <div className="gallery-actions">
-                  <button className="btn-gallery-action download-all" onClick={downloadAllPhotos}>
-                    Download Semua
-                  </button>
-                  <button className="btn-gallery-action delete-all" onClick={clearAllPhotos}>
-                    Hapus Semua
-                  </button>
-                </div>
-              </div>
-              <div className="gallery-scroll-container">
-                {capturedPhotos.map((photo, index) => (
-                  <div key={photo.id} className="gallery-item">
-                    {photo.type === 'video' ? (
-                      <video src={photo.dataUrl} loop muted playsInline autoPlay />
-                    ) : (
-                      <img src={photo.dataUrl} alt={`Captured ${index + 1}`} />
-                    )}
-                    {photo.type === 'video' && (
-                      <div className="video-badge" title="Video TikTok">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                          <polygon points="5 3 19 12 5 21 5 3" />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="item-overlay">
-                      <button 
-                        className="item-btn btn-download" 
-                        onClick={() => downloadSinglePhoto(photo.dataUrl, index, photo.type)}
-                        title="Unduh file"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                        </svg>
-                      </button>
-                      <button 
-                        className="item-btn btn-delete" 
-                        onClick={() => deletePhoto(photo.id)}
-                        title="Hapus file"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Music Selector (rendered only in Video mode) */}
-          {captureMode === 'video' && (
-            <div className="music-selector-wrapper fade-in-element fade-in-delay-2">
-              <div className="music-selector-container">
-                <label className="music-input-label btn btn-secondary" disabled={isRecording}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M9 18V5l12-2v13"/>
-                    <circle cx="6" cy="18" r="3"/>
-                    <circle cx="18" cy="16" r="3"/>
-                  </svg>
-                  <span>Pilih Musik (.mp3)</span>
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    disabled={isRecording}
-                    onChange={handleMusicChange}
-                    className="hidden-file-input"
-                    style={{ display: 'none' }}
-                  />
-                </label>
-                <span className="music-file-name" title={musicFile ? musicFile.name : 'Menggunakan Sal Priadi - Foto kita blur'}>
-                  🎵 {musicFile ? musicFile.name : 'Sal Priadi - Foto kita blur'}
-                </span>
-              </div>
-            </div>
-          )}
 
           {/* Controls */}
           <div className="controls fade-in-element fade-in-delay-2">
@@ -797,24 +886,25 @@ export default function App() {
               id="btn-toggle-capture-mode"
               className="btn btn-secondary"
               disabled={isRecording}
-              onClick={() => setCaptureMode((prev) => (prev === 'photo' ? 'video' : 'photo'))}
+              onClick={() => handleModeChange(captureMode === 'photo' ? 'video' : 'photo')}
               title="Ganti mode Foto / Video TikTok"
             >
               {captureMode === 'photo' ? (
-                <>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
-                  <span className="btn-text">Mode Foto</span>
-                </>
-              ) : (
                 <>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M23 7l-7 5 7 5V7z" />
                     <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
                   </svg>
                   <span className="btn-text">Mode Video</span>
+                </>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  <span className="btn-text">Mode Foto</span>
                 </>
               )}
             </button>
@@ -827,7 +917,7 @@ export default function App() {
                 onClick={stopRecording}
               >
                 <span className="recording-dot"></span>
-                <span className="timer-val">{recordingSeconds}s / 15s</span>
+                <span className="timer-val">{recordingSeconds}s / {videoDuration}s</span>
               </button>
             ) : (
               <button
@@ -960,7 +1050,162 @@ export default function App() {
               <span className="btn-text-long">Timer: </span>
               <span className="timer-val">{timerDuration === 0 ? 'Off' : `${timerDuration}s`}</span>
             </button>
+
+            <button
+              id="btn-duration"
+              className={`btn btn-secondary btn-duration-control ${captureMode === 'video' ? 'visible' : 'hidden-mode'}`}
+              disabled={isRecording}
+              onClick={() => {
+                const next = videoDuration === 15 ? 30 : videoDuration === 30 ? 45 : videoDuration === 45 ? 60 : 15;
+                handleDurationSelect(next);
+              }}
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 15 12" />
+              </svg>
+              <span className="btn-text-long">Durasi: </span>
+              <span className="duration-val">{videoDuration}s</span>
+            </button>
           </div>
+
+          {/* Music Selector & Trim Controls */}
+          <div className={`music-trim-wrapper ${captureMode === 'video' ? 'visible' : 'collapsed'}`}>
+              <div className="music-trim-container">
+                {/* Row 1: Song Info & Play Button */}
+                <div className="music-trim-header-row">
+                  <div className="music-title-container">
+                    <span className="music-icon-note">🎵</span>
+                    <span className="music-title-text" title="Sal Priadi - Foto kita blur">
+                      Sal Priadi - Foto kita blur
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn-play-icon-only ${isPreviewPlaying ? 'playing' : ''}`}
+                    disabled={isRecording}
+                    onClick={isPreviewPlaying ? stopPreview : startPreview}
+                    title={isPreviewPlaying ? "Hentikan Pratinjau Lagu" : "Putar Lagu"}
+                  >
+                    {isPreviewPlaying ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="6" width="12" height="12" rx="1" />
+                      </svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="6 3 20 12 6 21 6 3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+
+                {/* Row 2: Slider with flanking timestamps */}
+                <div className="music-trim-slider-row">
+                  <span className="time-label time-label-start">{formatTime(musicStartTime)}</span>
+                  <div className="double-slider-wrapper">
+                    <div className="double-slider-container">
+                      <div 
+                        className="slider-track" 
+                        style={{
+                          '--track-bg': `linear-gradient(to right, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.08) ${startPercent}%, var(--accent) ${startPercent}%, var(--accent) ${endPercent}%, rgba(255, 255, 255, 0.08) ${endPercent}%, rgba(255, 255, 255, 0.08) 100%)`
+                        }}
+                      ></div>
+                      <input
+                        type="range"
+                        min="0"
+                        max={audioDuration}
+                        value={musicStartTime}
+                        disabled={isRecording}
+                        onChange={(e) => handleStartSliderChange(parseFloat(e.target.value))}
+                        className="slider-thumb slider-start"
+                      />
+                      <input
+                        type="range"
+                        min="0"
+                        max={audioDuration}
+                        value={musicEndTime}
+                        disabled={isRecording}
+                        onChange={(e) => handleEndSliderChange(parseFloat(e.target.value))}
+                        className="slider-thumb slider-end"
+                      />
+                    </div>
+                  </div>
+                  <span className="time-label time-label-end">{formatTime(musicEndTime)}</span>
+                </div>
+              </div>
+            </div>
+
+          {/* Session Gallery */}
+          <div className={`gallery-section ${capturedPhotos.length > 0 ? 'visible' : 'collapsed'}`}>
+            <div className="gallery-header">
+              <h3>Hasil Foto & Video Sesi Ini ({capturedPhotos.length})</h3>
+              <div className="gallery-actions">
+                <button className="btn-gallery-action download-all" onClick={downloadAllPhotos}>
+                  Download Semua
+                </button>
+                <button className="btn-gallery-action delete-all" onClick={clearAllPhotos}>
+                  Hapus Semua
+                </button>
+              </div>
+            </div>
+            <div className="gallery-scroll-container">
+               {capturedPhotos.map((photo, index) => (
+                <div 
+                  key={photo.id} 
+                  className={`gallery-item ${photo.id === deletingPhotoId ? 'removing' : ''}`}
+                  onClick={() => setActivePreviewItem(photo)}
+                  style={{ cursor: 'pointer' }}
+                >
+                    {photo.type === 'video' ? (
+                      <video src={photo.dataUrl} loop muted playsInline autoPlay />
+                    ) : (
+                      <img src={photo.dataUrl} alt={`Captured ${index + 1}`} />
+                    )}
+                    {photo.type === 'video' && (
+                      <div className="video-badge" title="Video TikTok">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="item-overlay">
+                      <button 
+                        className="item-btn btn-download" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadSinglePhoto(photo.dataUrl, index, photo.type);
+                        }}
+                        title="Unduh file"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                        </svg>
+                      </button>
+                      <button 
+                        className="item-btn btn-delete" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deletePhoto(photo.id);
+                        }}
+                        title="Hapus file"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
           {/* Footer info */}
           <div className="tip-footer fade-in-element fade-in-delay-3">
@@ -993,16 +1238,38 @@ export default function App() {
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
               </svg>
             </div>
-            <h3>Hapus Semua Foto?</h3>
-            <p>Tindakan ini akan menghapus semua foto di galeri sesi ini. Anda tidak dapat membatalkan tindakan ini.</p>
+            <h3>{deleteTarget === 'all' ? 'Hapus Semua Media?' : 'Hapus Media Ini?'}</h3>
+            <p>
+              {deleteTarget === 'all'
+                ? 'Tindakan ini akan menghapus semua foto dan video di galeri sesi ini. Anda tidak dapat membatalkan tindakan ini.'
+                : 'Tindakan ini akan menghapus file foto/video ini dari galeri. Anda tidak dapat membatalkan tindakan ini.'}
+            </p>
             <div className="modal-buttons">
               <button 
                 className="btn btn-danger" 
                 onClick={() => {
                   setConfirmModalState('closing-confirm');
                   setTimeout(() => {
-                    setCapturedPhotos([]);
-                    setConfirmModalState(null);
+                    if (deleteTarget === 'all') {
+                      setCapturedPhotos([]);
+                      setConfirmModalState(null);
+                      setDeleteTarget(null);
+                    } else {
+                      // Trigger removing animation in gallery first
+                      setDeletingPhotoId(deleteTarget);
+                      // Close the modal
+                      setConfirmModalState(null);
+                      
+                      // After the animation finishes, remove from state
+                      setTimeout(() => {
+                        setCapturedPhotos((prev) => prev.filter((p) => p.id !== deleteTarget));
+                        if (activePreviewItem && activePreviewItem.id === deleteTarget) {
+                          setActivePreviewItem(null);
+                        }
+                        setDeletingPhotoId(null);
+                        setDeleteTarget(null);
+                      }, 350); // Matches CSS transition duration
+                    }
                   }, 400); // Wait for exit animation to complete
                 }}
               >
@@ -1014,10 +1281,65 @@ export default function App() {
                   setConfirmModalState('closing-cancel');
                   setTimeout(() => {
                     setConfirmModalState(null);
+                    setDeleteTarget(null);
                   }, 300); // Wait for exit animation to complete
                 }}
               >
                 Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Preview Modal */}
+      {activePreviewItem && (
+        <div className="lightbox-overlay" onClick={() => setActivePreviewItem(null)}>
+          <div className="lightbox-card" onClick={(e) => e.stopPropagation()}>
+            <div className="lightbox-media-wrapper">
+              {activePreviewItem.type === 'video' ? (
+                <video key={activePreviewItem.id} src={activePreviewItem.dataUrl} controls autoPlay loop playsInline />
+              ) : (
+                <img src={activePreviewItem.dataUrl} alt="Lightbox Preview" />
+              )}
+            </div>
+            <div className="lightbox-actions">
+              <button 
+                className="btn btn-secondary btn-lightbox-download"
+                onClick={() => {
+                  const index = capturedPhotos.findIndex(p => p.id === activePreviewItem.id);
+                  downloadSinglePhoto(activePreviewItem.dataUrl, index, activePreviewItem.type);
+                }}
+                title="Unduh file"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+                <span>Unduh</span>
+              </button>
+              <button 
+                className="btn btn-danger btn-lightbox-retake"
+                onClick={() => {
+                  deletePhoto(activePreviewItem.id);
+                  setActivePreviewItem(null);
+                }}
+                title="Hapus file dan ambil ulang"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                </svg>
+                <span>Hapus & Take Ulang</span>
+              </button>
+              <button 
+                className="btn btn-secondary btn-lightbox-close"
+                onClick={() => setActivePreviewItem(null)}
+                title="Tutup pratinjau"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                <span>Tutup</span>
               </button>
             </div>
           </div>
