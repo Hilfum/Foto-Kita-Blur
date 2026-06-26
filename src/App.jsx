@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import salPriadiMusic from './assets/Sal Priadi - Foto kita blur Official Lyric Video.mp3';
 
 export default function App() {
   const [cameraActive, setCameraActive] = useState(false);
@@ -14,6 +15,17 @@ export default function App() {
   const [isFlashing, setIsFlashing] = useState(false);
   const [capturedPhotos, setCapturedPhotos] = useState([]);
   const [confirmModalState, setConfirmModalState] = useState(null); // null | 'open' | 'closing-confirm' | 'closing-cancel'
+  const [captureMode, setCaptureMode] = useState('photo'); // 'photo' | 'video'
+  const [isRecording, setIsRecording] = useState(false);
+  const [musicFile, setMusicFile] = useState(null);
+  const [musicUrl, setMusicUrl] = useState(salPriadiMusic);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+
+  const mediaRecorderRef = useRef(null);
+  const audioRef = useRef(null);
+  const recordingIntervalRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const streamDestRef = useRef(null);
 
   const timerIntervalRef = useRef(null);
 
@@ -29,34 +41,34 @@ export default function App() {
   const processFrameIdRef = useRef(null);
   const renderLoopIdRef = useRef(null);
 
-  const dist = (a, b) => {
-    return Math.hypot(a.x - b.x, a.y - b.y);
+  const dist = (a, b, aspect = 1) => {
+    const dx = (a.x - b.x) * aspect;
+    const dy = a.y - b.y;
+    return Math.hypot(dx, dy);
   };
 
-  const isPeaceSign = (landmarks) => {
-    const wrist = landmarks[0];
-    const indexTip = landmarks[8];
-    const indexMcp = landmarks[5];
-    const middleTip = landmarks[12];
-    const middleMcp = landmarks[9];
-    const ringTip = landmarks[16];
-    const ringMcp = landmarks[13];
-    const pinkyTip = landmarks[20];
-    const pinkyMcp = landmarks[17];
-
-    const indexExtended = dist(wrist, indexTip) > dist(wrist, indexMcp) * 1.3;
-    const middleExtended = dist(wrist, middleTip) > dist(wrist, middleMcp) * 1.3;
-    const ringFolded = dist(wrist, ringTip) < dist(wrist, ringMcp) * 1.25;
-    const pinkyFolded = dist(wrist, pinkyTip) < dist(wrist, pinkyMcp) * 1.25;
+  const isPeaceSign = (landmarks, aspect = 1) => {
+    // Index: MCP (5), PIP (6), TIP (8)
+    const indexExtended = dist(landmarks[8], landmarks[5], aspect) > dist(landmarks[6], landmarks[5], aspect) * 1.5;
+    // Middle: MCP (9), PIP (10), TIP (12)
+    const middleExtended = dist(landmarks[12], landmarks[9], aspect) > dist(landmarks[10], landmarks[9], aspect) * 1.5;
+    // Ring: MCP (13), PIP (14), TIP (16)
+    const ringFolded = dist(landmarks[16], landmarks[13], aspect) < dist(landmarks[14], landmarks[13], aspect) * 1.3;
+    // Pinky: MCP (17), PIP (18), TIP (20)
+    const pinkyFolded = dist(landmarks[20], landmarks[17], aspect) < dist(landmarks[18], landmarks[17], aspect) * 1.3;
 
     return indexExtended && middleExtended && ringFolded && pinkyFolded;
   };
 
   const onResults = (results) => {
     let detected = false;
+    let aspect = 1;
+    if (videoRef.current && videoRef.current.videoWidth && videoRef.current.videoHeight) {
+      aspect = videoRef.current.videoWidth / videoRef.current.videoHeight;
+    }
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
       for (const lm of results.multiHandLandmarks) {
-        if (isPeaceSign(lm)) {
+        if (isPeaceSign(lm, aspect)) {
           detected = true;
           break;
         }
@@ -77,7 +89,7 @@ export default function App() {
       });
       hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 0,
+        modelComplexity: 1,
         minDetectionConfidence: 0.65,
         minTrackingConfidence: 0.6,
       });
@@ -213,6 +225,24 @@ export default function App() {
     }
     setCountdown(0);
 
+    // Clear recording timer & components
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    setIsRecording(false);
+
     if (processFrameIdRef.current) {
       cancelAnimationFrame(processFrameIdRef.current);
       processFrameIdRef.current = null;
@@ -324,17 +354,177 @@ export default function App() {
         if (count === 0) {
           clearInterval(timerIntervalRef.current);
           timerIntervalRef.current = null;
-          triggerCapture();
+          if (captureMode === 'video') {
+            startRecording();
+          } else {
+            triggerCapture();
+          }
         }
       }, 1000);
     } else {
-      triggerCapture();
+      if (captureMode === 'video') {
+        startRecording();
+      } else {
+        triggerCapture();
+      }
     }
   };
 
-  const downloadSinglePhoto = (dataUrl, index) => {
+  const handleMusicChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setMusicFile(file);
+      const fileUrl = URL.createObjectURL(file);
+      setMusicUrl(fileUrl);
+    }
+  };
+
+  const startRecording = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    try {
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      setStatusText('Sedang merekam video TikTok...');
+
+      let hasAudio = false;
+      let audioCtx = null;
+      let destNode = null;
+      let audio = null;
+
+      try {
+        // 1. Set up audio context
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtxRef.current = audioCtx;
+
+        // 2. Set up audio element
+        audio = new Audio(musicUrl);
+        audio.crossOrigin = 'anonymous';
+        audio.loop = true;
+        audioRef.current = audio;
+
+        // 3. Connect nodes
+        const sourceNode = audioCtx.createMediaElementSource(audio);
+        destNode = audioCtx.createMediaStreamDestination();
+        streamDestRef.current = destNode;
+
+        sourceNode.connect(destNode);
+        sourceNode.connect(audioCtx.destination);
+
+        // 4. Start audio playback
+        await audio.play();
+        hasAudio = true;
+      } catch (audioErr) {
+        console.warn('Gagal memutar audio backsound, merekam video saja:', audioErr);
+        setStatusText('Musik tidak ditemukan / gagal dimuat. Merekam tanpa musik...');
+        hasAudio = false;
+      }
+
+      // 5. Capture canvas video stream
+      const canvasStream = canvas.captureStream(30);
+
+      // 6. Combine tracks
+      const tracks = [...canvasStream.getVideoTracks()];
+      if (hasAudio && destNode) {
+        const audioTracks = destNode.stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          tracks.push(audioTracks[0]);
+        }
+      }
+
+      const combinedStream = new MediaStream(tracks);
+
+      // 7. Initialize recorder
+      let mimeType = 'video/webm;codecs=vp9,opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8,opus';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/mp4';
+      }
+
+      const recorder = new MediaRecorder(combinedStream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      const chunks = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: mimeType });
+        const videoUrl = URL.createObjectURL(blob);
+
+        setCapturedPhotos((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            dataUrl: videoUrl,
+            type: 'video',
+          },
+        ]);
+        setStatusText('Video TikTok berhasil disimpan di galeri.');
+      };
+
+      recorder.start();
+
+      let elapsed = 0;
+      recordingIntervalRef.current = setInterval(() => {
+        elapsed += 1;
+        setRecordingSeconds(elapsed);
+        if (elapsed >= 15) {
+          stopRecording();
+        }
+      }, 1000);
+
+    } catch (err) {
+      console.error('Error starting video recording:', err);
+      setIsRecording(false);
+      setStatusText('Gagal memulai perekaman video. Coba pilih file lagu lain.');
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+    }
+  };
+
+  const stopRecording = () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+
+    setIsRecording(false);
+  };
+
+  const downloadSinglePhoto = (dataUrl, index, type = 'photo') => {
     const link = document.createElement('a');
-    link.download = `foto-kita-blur-${index + 1}.png`;
+    const ext = type === 'video' ? 'webm' : 'png';
+    link.download = `foto-kita-blur-${index + 1}.${ext}`;
     link.href = dataUrl;
     link.click();
   };
@@ -343,7 +533,8 @@ export default function App() {
     capturedPhotos.forEach((photo, index) => {
       setTimeout(() => {
         const link = document.createElement('a');
-        link.download = `foto-kita-blur-${index + 1}.png`;
+        const ext = photo.type === 'video' ? 'webm' : 'png';
+        link.download = `foto-kita-blur-${index + 1}.${ext}`;
         link.href = photo.dataUrl;
         link.click();
       }, index * 200);
@@ -439,10 +630,23 @@ export default function App() {
         </div>
       ) : (
         <div className={`app-card mode-${orientationMode}`}>
-          <header className="fade-in-element">
-            <div className="header-logo-row">
-              <h1>Foto Kita Blur</h1>
-            </div>
+          <header className="fade-in-element header-top-row">
+            <button
+              id="btn-back-header"
+              className="btn-back-header"
+              disabled={isRecording}
+              onClick={() => {
+                stopCamera();
+                setOrientationMode(null);
+              }}
+              title="Kembali ke pemilihan layout"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+              <span>Kembali</span>
+            </button>
+            <h1>Foto Kita Blur</h1>
           </header>
 
           <div className="stage-container fade-in-element fade-in-delay-1">
@@ -504,10 +708,11 @@ export default function App() {
           </div>
 
           {/* Session Gallery */}
+          {/* Session Gallery */}
           {capturedPhotos.length > 0 && (
             <div className="gallery-section fade-in-element fade-in-delay-2">
               <div className="gallery-header">
-                <h3>Hasil Foto Sesi Ini ({capturedPhotos.length})</h3>
+                <h3>Hasil Foto & Video Sesi Ini ({capturedPhotos.length})</h3>
                 <div className="gallery-actions">
                   <button className="btn-gallery-action download-all" onClick={downloadAllPhotos}>
                     Download Semua
@@ -520,12 +725,23 @@ export default function App() {
               <div className="gallery-scroll-container">
                 {capturedPhotos.map((photo, index) => (
                   <div key={photo.id} className="gallery-item">
-                    <img src={photo.dataUrl} alt={`Captured ${index + 1}`} />
+                    {photo.type === 'video' ? (
+                      <video src={photo.dataUrl} loop muted playsInline autoPlay />
+                    ) : (
+                      <img src={photo.dataUrl} alt={`Captured ${index + 1}`} />
+                    )}
+                    {photo.type === 'video' && (
+                      <div className="video-badge" title="Video TikTok">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                      </div>
+                    )}
                     <div className="item-overlay">
                       <button 
                         className="item-btn btn-download" 
-                        onClick={() => downloadSinglePhoto(photo.dataUrl, index)}
-                        title="Unduh foto"
+                        onClick={() => downloadSinglePhoto(photo.dataUrl, index, photo.type)}
+                        title="Unduh file"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
@@ -534,7 +750,7 @@ export default function App() {
                       <button 
                         className="item-btn btn-delete" 
                         onClick={() => deletePhoto(photo.id)}
-                        title="Hapus foto"
+                        title="Hapus file"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                           <polyline points="3 6 5 6 21 6" />
@@ -548,59 +764,112 @@ export default function App() {
             </div>
           )}
 
+          {/* Music Selector (rendered only in Video mode) */}
+          {captureMode === 'video' && (
+            <div className="music-selector-wrapper fade-in-element fade-in-delay-2">
+              <div className="music-selector-container">
+                <label className="music-input-label btn btn-secondary" disabled={isRecording}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M9 18V5l12-2v13"/>
+                    <circle cx="6" cy="18" r="3"/>
+                    <circle cx="18" cy="16" r="3"/>
+                  </svg>
+                  <span>Pilih Musik (.mp3)</span>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    disabled={isRecording}
+                    onChange={handleMusicChange}
+                    className="hidden-file-input"
+                    style={{ display: 'none' }}
+                  />
+                </label>
+                <span className="music-file-name" title={musicFile ? musicFile.name : 'Menggunakan Sal Priadi - Foto kita blur'}>
+                  🎵 {musicFile ? musicFile.name : 'Sal Priadi - Foto kita blur'}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Controls */}
           <div className="controls fade-in-element fade-in-delay-2">
             <button
-              id="btn-change-mode-control"
+              id="btn-toggle-capture-mode"
               className="btn btn-secondary"
-              onClick={() => {
-                stopCamera();
-                setOrientationMode(null);
-              }}
-              title="Kembali ke pemilihan layout"
+              disabled={isRecording}
+              onClick={() => setCaptureMode((prev) => (prev === 'photo' ? 'video' : 'photo'))}
+              title="Ganti mode Foto / Video TikTok"
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
-              <span className="btn-text">Ubah Tampilan</span>
+              {captureMode === 'photo' ? (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  <span className="btn-text">Mode Foto</span>
+                </>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 7l-7 5 7 5V7z" />
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                  </svg>
+                  <span className="btn-text">Mode Video</span>
+                </>
+              )}
             </button>
 
-            <button
-              id="btn-snapshot"
-              className="btn btn-secondary"
-              disabled={!cameraActive || countdown > 0}
-              onClick={handleCaptureClick}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            {captureMode === 'video' && isRecording ? (
+              <button
+                id="btn-stop-recording"
+                className="btn btn-danger btn-recording"
+                disabled={!cameraActive}
+                onClick={stopRecording}
               >
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                <circle cx="12" cy="13" r="4" />
-              </svg>
-              <span className="btn-text">Ambil Foto</span>
-            </button>
+                <span className="recording-dot"></span>
+                <span className="timer-val">{recordingSeconds}s / 15s</span>
+              </button>
+            ) : (
+              <button
+                id="btn-snapshot"
+                className="btn btn-secondary"
+                disabled={!cameraActive || countdown > 0}
+                onClick={handleCaptureClick}
+              >
+                {captureMode === 'video' ? (
+                  <>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <circle cx="12" cy="12" r="3" fill="red" />
+                    </svg>
+                    <span className="btn-text">Rekam Video</span>
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                      <circle cx="12" cy="13" r="4" />
+                    </svg>
+                    <span className="btn-text">Ambil Foto</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {!cameraActive ? (
               <button
                 id="btn-start"
                 className="btn btn-primary"
-                disabled={isConnecting || isModelLoading}
+                disabled={isConnecting || isModelLoading || isRecording}
                 onClick={startCamera}
               >
                 <svg
@@ -622,6 +891,7 @@ export default function App() {
               <button
                 id="btn-stop"
                 className="btn btn-danger"
+                disabled={isRecording}
                 onClick={stopCamera}
               >
                 <svg
@@ -644,7 +914,7 @@ export default function App() {
             <button
               id="btn-switch"
               className="btn btn-secondary"
-              disabled={!cameraActive}
+              disabled={!cameraActive || isRecording}
               onClick={switchCamera}
             >
               <svg
@@ -665,7 +935,7 @@ export default function App() {
             <button
               id="btn-timer"
               className="btn btn-secondary"
-              disabled={!cameraActive}
+              disabled={!cameraActive || isRecording}
               onClick={() => {
                 setTimerDuration((prev) => {
                   if (prev === 0) return 3;
